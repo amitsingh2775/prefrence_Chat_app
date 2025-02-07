@@ -48,7 +48,7 @@ app.use(express.json());
 app.get("/", (req, res) => res.send("Redis-based server is running!"));
 
 // Constants
-const MAX_USERS_PER_ROOM = 10;
+const MAX_USERS_PER_ROOM = 5;
 
 // Socket.io connection
 io.on("connection", (socket) => {
