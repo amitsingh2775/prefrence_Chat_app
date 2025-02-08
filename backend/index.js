@@ -26,19 +26,14 @@ const redisClient = Redis.createClient({
   }
 })();
 
-// Pub/Sub setup
 const subscriber = redisClient.duplicate();
 const publisher = redisClient.duplicate();
 
 (async () => {
   try {
     await subscriber.connect();
-    console.log("subscriber connected");
-    
-
     await publisher.connect();
-    console.log("publisher connected");
-    
+    console.log("Redis Pub/Sub connected successfully.");
   } catch (err) {
     console.error("Redis connection error:", err);
   }
@@ -50,14 +45,15 @@ app.get("/", (req, res) => res.send("Redis-based server is running!"));
 // Constants
 const MAX_USERS_PER_ROOM = 5;
 
-// Socket.io connection
-io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
+io.on("connection", async (socket) => {
+  const userId = socket.handshake.query.userID;
+  console.log("User connected:", userId);
 
-  // Handle preference selection
+  await redisClient.set(`user:${userId}`, socket.id);
+
   socket.on("choose_preference", async ({ preference }) => {
     try {
-      const event = { userId: socket.id, preference };
+      const event = { userId, preference };
       await publisher.publish("preference-events", JSON.stringify(event));
       console.log("Event published:", event);
     } catch (err) {
@@ -65,50 +61,43 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Handle sending messages
   socket.on("send_message", async ({ roomID, message }) => {
-    try {
-      // Emit the message to all users in the room
+    if (roomID && message) {
       io.to(roomID).emit("receive_message", {
-        sender: socket.id,
+        sender: userId,
         message,
       });
       console.log(`Message broadcasted to room ${roomID}: ${message}`);
-    } catch (err) {
-      console.error("Error sending message:", err);
     }
   });
 
-  // Handle disconnect
   socket.on("disconnect", async () => {
-    try {
-      console.log("User disconnected:", socket.id);
-      const keys = await redisClient.keys("room:*");
-      keys.forEach((key) => redisClient.lRem(key, 0, socket.id));
-    } catch (err) {
-      console.error("Error on user disconnect:", err);
+    console.log("User disconnected:", userId);
+    await redisClient.del(`user:${userId}`);
+
+    const keys = await redisClient.keys("room:*");
+    for (const key of keys) {
+      await redisClient.lRem(key, 0, userId);
     }
   });
 });
 
-// Redis subscriber for processing preference events
 subscriber.subscribe("preference-events", async (message) => {
   try {
     const event = JSON.parse(message);
     const { userId, preference } = event;
 
-    // Check for existing room with space
     let roomID = null;
     const roomKeys = await redisClient.keys(`room:${preference}:*`);
+
     for (const key of roomKeys) {
       const usersCount = await redisClient.lLen(key);
       if (usersCount < MAX_USERS_PER_ROOM) {
-        roomID = key.split(":")[2]; // Extract room ID
+        roomID = key.split(":")[2];
         break;
       }
     }
 
-    // If no room available, create a new one
     if (!roomID) {
       roomID = uuidv4();
       console.log(`Created new room: ${roomID} for preference: ${preference}`);
@@ -117,8 +106,8 @@ subscriber.subscribe("preference-events", async (message) => {
     const roomKey = `room:${preference}:${roomID}`;
     await redisClient.rPush(roomKey, userId);
 
-    // Notify the user
-    const userSocket = io.sockets.sockets.get(userId);
+    const userSocketId = await redisClient.get(`user:${userId}`);
+    const userSocket = io.sockets.sockets.get(userSocketId);
     if (userSocket) {
       userSocket.join(roomID);
       const users = await redisClient.lRange(roomKey, 0, -1);
