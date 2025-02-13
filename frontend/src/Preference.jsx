@@ -21,7 +21,7 @@ const Preference = ({ setRoomID, preference, setPreference }) => {
     if (preference.preferences.length > 0) {
       setloder(true);
       // Emit selected preferences to the server
-      socket.emit("choose_preference", { preferences: preference.preferences });
+      socket.emit("choose_preference", { preference: preference.preferences });
 
       // Listen for room assignment from the server
       socket.on("join_room", ({ roomID }) => {
