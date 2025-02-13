@@ -78,9 +78,6 @@ const ChatRoom = ({ roomID, setRoomID }) => {
                       <span className="w-2 h-2 bg-green-500 rounded-full animate-[ping_2.5s_linear_infinite]"></span>
                       {roomUsers} users in room
                     </p>
-
-
-
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -94,16 +91,21 @@ const ChatRoom = ({ roomID, setRoomID }) => {
             </div>
 
             <div className="h-[60vh] overflow-y-auto space-y-6 pr-4 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-              {messages.map((msg, index) => (
-                <div key={index} className={`flex ${msg.sender === "You" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[80%] backdrop-blur-xl rounded-3xl px-6 py-4 ${msg.sender === "You" ? "bg-gradient-to-br from-cyan-500/40 to-blue-500/40 text-white" : "bg-white/10 text-white"}`}>
-                    {msg.sender !== "You" && <p className="text-sm font-medium mb-1 text-white/80">{msg.sender}</p>}
-                    <p className="text-sm leading-relaxed">{msg.message}</p>
-                    <p className="text-[10px] mt-2 opacity-50">{msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+  {messages
+    .filter((msg) => msg.sender !== sessionStorage.getItem("userId")) 
+    .map((msg, index) => (
+      <div key={index} className={`flex ${msg.sender === "You" ? "justify-end" : "justify-start"}`}>
+        <div className={`max-w-[80%] backdrop-blur-xl rounded-3xl px-6 py-4 ${msg.sender === "You" ? "bg-gradient-to-br from-cyan-500/40 to-blue-500/40 text-white" : "bg-white/10 text-white"}`}>
+          {msg.sender !== "You" && <p className="text-sm font-medium mb-1 text-white/80">{msg.sender}</p>}
+          <p className="text-sm leading-relaxed">{msg.message}</p>
+          <p className="text-[10px] mt-2 opacity-50">
+            {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </p>
+        </div>
+      </div>
+    ))}
+</div>
+
 
             <div className="mt-6">
               <form onSubmit={handleSendMessage} className="relative">
