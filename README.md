@@ -1,3 +1,6 @@
-![image](https://github.com/user-attachments/assets/80ef661d-c9b3-477b-90ed-ee0dac6adbee)
-![image](https://github.com/user-attachments/assets/f6003ece-2a9e-4f9f-89e3-b94566d56884)
+## first page 
+![image](https://github.com/user-attachments/assets/a30b246a-161c-4e86-ba0d-310305330c82)
+##chat room
+![image](https://github.com/user-attachments/assets/33fe06a6-23b7-4a60-9992-15eaa722170e)
+
 
