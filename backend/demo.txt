@@ -32,9 +32,9 @@ const messageSubscriber = redisClient.duplicate();
     io.to(chatEvent.roomID).emit("receive_message", {
       sender: chatEvent.sender,
       message: chatEvent.message,
-      timestamp: chatEvent.timestamp || new Date(),
     });
 
+    // Store message in Redis (keep last 100 messages)
     await redisClient.rPush(`messages:${chatEvent.roomID}`, JSON.stringify(chatEvent));
     await redisClient.lTrim(`messages:${chatEvent.roomID}`, -100, -1);
   });
@@ -45,47 +45,11 @@ app.get("/", (req, res) => res.send("Redis-based chat server is running!"));
 
 const MAX_USERS_PER_ROOM = 5;
 
-// Global helper function to update room status
-async function updateRoomStatus(roomID) {
-  const roomSockets = await io.in(roomID).fetchSockets();
-  const usersInRoom = roomSockets.map((s) => s.handshake.query.userID);
-
-  io.to(roomID).emit("room_update", {
-    message: usersInRoom.length > 0 ? `Users in room: ${usersInRoom.length}` : "Room is empty",
-    users: usersInRoom.length,
-    userList: usersInRoom,
-  });
-
-  if (usersInRoom.length === 0) {
-    await redisClient.del(`messages:${roomID}`);
-    const preferenceKeys = await redisClient.keys(`room:*:${roomID}`);
-    for (const key of preferenceKeys) {
-      await redisClient.del(key); // Delete room key with preference prefix
-    }
-    console.log(`Room ${roomID} is empty and deleted.`);
-  }
-}
-
 io.on("connection", async (socket) => {
   const userId = socket.handshake.query.userID;
   console.log(`User connected: ${userId}`);
 
   await redisClient.set(`user:${userId}`, socket.id);
-
-  const previousRoomID = await redisClient.get(`user-room:${userId}`);
-  if (previousRoomID) {
-    socket.join(previousRoomID);
-    const storedMessages = await redisClient.lRange(`messages:${previousRoomID}`, 0, -1);
-    storedMessages.forEach((msg) => {
-      const parsedMsg = JSON.parse(msg);
-      socket.emit("receive_message", {
-        sender: parsedMsg.sender,
-        message: parsedMsg.message,
-        timestamp: parsedMsg.timestamp || new Date(),
-      });
-    });
-    await updateRoomStatus(previousRoomID);
-  }
 
   socket.on("choose_preference", async ({ preference }) => {
     await publisher.publish(
@@ -97,7 +61,7 @@ io.on("connection", async (socket) => {
   socket.on("send_message", async ({ roomID, message }) => {
     await publisher.publish(
       `chat-room:${roomID}`,
-      JSON.stringify({ roomID, sender: userId, message, timestamp: new Date() })
+      JSON.stringify({ roomID, sender: userId, message })
     );
   });
 
@@ -105,31 +69,62 @@ io.on("connection", async (socket) => {
     socket.join(roomID);
     await redisClient.set(`user-room:${userId}`, roomID);
 
+    // Send stored messages to reconnecting users
     const storedMessages = await redisClient.lRange(`messages:${roomID}`, 0, -1);
-    storedMessages.forEach((msg) => {
-      const parsedMsg = JSON.parse(msg);
-      socket.emit("receive_message", {
-        sender: parsedMsg.sender,
-        message: parsedMsg.message,
-        timestamp: parsedMsg.timestamp || new Date(),
-      });
-    });
+    storedMessages.forEach((msg) => socket.emit("receive_message", JSON.parse(msg)));
 
-    await updateRoomStatus(roomID);
+    const roomSockets = await io.in(roomID).fetchSockets();
+    const usersInRoom = roomSockets.map((s) => s.handshake.query.userID);
+
+    io.to(roomID).emit("room_update", {
+      message: `A new user has joined the room!`,
+      users: usersInRoom.length,
+      userList: usersInRoom,
+    });
   });
 
   socket.on("leave_room", async ({ roomID }) => {
     socket.leave(roomID);
-    await redisClient.del(`user-room:${userId}`);
-    await updateRoomStatus(roomID);
+
+    const roomSockets = await io.in(roomID).fetchSockets();
+    const usersInRoom = roomSockets.map((s) => s.handshake.query.userID);
+
+    io.to(roomID).emit("room_update", {
+      message: `A user has left the room!`,
+      users: usersInRoom.length,
+      userList: usersInRoom,
+    });
+
+    if (usersInRoom.length === 0) {
+      await redisClient.del(`messages:${roomID}`);
+      console.log(`Room ${roomID} is empty. Messages deleted.`);
+    }
   });
 
   socket.on("disconnect", async () => {
     console.log(`User disconnected: ${userId}`);
+
     const roomID = await redisClient.get(`user-room:${userId}`);
     if (roomID) {
-      await updateRoomStatus(roomID);
+      socket.leave(roomID);
+
+      const roomSockets = await io.in(roomID).fetchSockets();
+      const usersInRoom = roomSockets.map((s) => s.handshake.query.userID);
+
+      io.to(roomID).emit("room_update", {
+        message: `A user has disconnected!`,
+        users: usersInRoom.length,
+        userList: usersInRoom,
+      });
+
+      await redisClient.del(`user-room:${userId}`);
+
+      if (usersInRoom.length === 0) {
+        await redisClient.del(`messages:${roomID}`);
+        console.log(`Room ${roomID} is empty. Messages deleted.`);
+      }
     }
+
     await redisClient.del(`user:${userId}`);
   });
 });
@@ -162,7 +157,6 @@ async function createSubscriberForPreference(preference) {
         roomID,
         users: await redisClient.lRange(roomKey, 0, -1),
       });
-      await updateRoomStatus(roomID); 
     }
   });
 }
