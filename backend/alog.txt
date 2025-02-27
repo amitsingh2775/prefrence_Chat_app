@@ -1,0 +1,12 @@
+#User Join Kare:
+Room ID se related ek object Redis me banao (agar nahi hai to).
+User ki count ko update karo.
+
+#Message Send Kare:
+Message ko Redis ke object me push karo.
+
+#User Leave Kare:
+User count kam karo.
+Agar room me koi user nahi hai to data delete karo.
+
+rediss://default:AdmVAAIjcDFjOTE3Y2Y2M2FmN2Y0MzVlYTMwNTQxZmVmOWZkZDhhMnAxMA@intent-panda-55701.upstash.io:6379

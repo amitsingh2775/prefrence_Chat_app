@@ -28,11 +28,15 @@ const Preference = ({ setRoomID, preference, setPreference }) => {
         setloder(false);
         setRoomID(roomID);
       });
+     
     }
   };
 
   const handlePreferenceToggle = (label) => {
     setPreference({ preferences: [label] });
+    console.log({ preferences: [label] });
+    
+    sessionStorage.setItem("preference", label);
   };
 
   const examplePreferences = [

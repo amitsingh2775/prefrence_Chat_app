@@ -1,3 +1,9 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+/* index.css */
+.emoji-picker {
+    width: 300px !important;
+    height: 400px !important;
+    overflow-y: auto;
+  }

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { FaPaperPlane } from "react-icons/fa";
-import { Sparkles, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
+import Message from "./components/Message";
 import toast from "react-hot-toast";
 import socket from "./socket";
 
@@ -8,25 +9,23 @@ const ChatRoom = ({ roomID, setRoomID }) => {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
   const [roomUsers, setRoomUsers] = useState(0);
-
-  const userId = sessionStorage.getItem("userId"); // User ID session se
-  const userPreference = { name: "User1", preferences: ["Art", "Music"] };
-  const chatContainerRef = useRef(null); // Chat container ko refer karne ke liye
+  const userId = sessionStorage.getItem("userId");
+  const [pref, setPref] = useState("");
+  const chatContainerRef = useRef(null);
+  const textareaRef = useRef(null);
 
   useEffect(() => {
-    if (roomID) {
-      socket.emit("join_room", { roomID });
+    socket.emit("join_room", { roomID });
+    const getPref = sessionStorage.getItem("preference");
+    setPref(getPref);
 
-      // Check if profile image already exists in sessionStorage
-      if (!sessionStorage.getItem(`profileImage_${userId}`)) {
-        // Generate and store a random profile image for this user
-        const profileImage = `https://avatar.iran.liara.run/public?user=${userId}&timestamp=${Date.now()}`;
-        sessionStorage.setItem(`profileImage_${userId}`, profileImage);
-      }
+    if (!sessionStorage.getItem(`profileImage_${userId}`)) {
+      const profileImage = `https://avatar.iran.liara.run/public?user=${userId}&timestamp=${Date.now()}`;
+      sessionStorage.setItem(`profileImage_${userId}`, profileImage);
     }
 
-    socket.on("receive_message", ({ sender, message, timestamp }) => {
-      setMessages((prev) => [...prev, { sender, message, timestamp: new Date(timestamp) }]);
+    socket.on("receive_message", ({ sender, message, timestamp, id, reactions = {} }) => {
+      setMessages((prev) => [...prev, { sender, message, timestamp: new Date(timestamp), id, reactions }]);
     });
 
     socket.on("room_update", (event) => {
@@ -34,13 +33,19 @@ const ChatRoom = ({ roomID, setRoomID }) => {
       setRoomUsers(event.users);
     });
 
+    socket.on("reaction_added", ({ messageId, reactions }) => {
+      setMessages((prev) =>
+        prev.map((msg) => (msg.id === messageId ? { ...msg, reactions } : msg))
+      );
+    });
+
     return () => {
       socket.off("receive_message");
       socket.off("room_update");
+      socket.off("reaction_added");
     };
   }, [roomID, userId]);
 
-  // Scroll to bottom jab messages update hote hain
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
@@ -49,9 +54,16 @@ const ChatRoom = ({ roomID, setRoomID }) => {
 
   const handleSendMessage = (e) => {
     e.preventDefault();
-    if (roomID && message) {
+    if (roomID && message.trim()) {
       socket.emit("send_message", { roomID, message });
-      setMessage(""); // Input khali kar do
+      setMessage("");
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage(e);
     }
   };
 
@@ -59,12 +71,13 @@ const ChatRoom = ({ roomID, setRoomID }) => {
     setRoomID(null);
     socket.emit("leave_room", { roomID });
     sessionStorage.removeItem("userId");
-    sessionStorage.removeItem(`profileImage_${userId}`); // Profile image bhi hata do jab room chhode
+    sessionStorage.removeItem(`profileImage_${userId}`);
+    sessionStorage.removeItem("preference");
+    setPref("");
   };
 
-  // Profile image get karne ka function
   const getProfileImage = (sender) => {
-    return sessionStorage.getItem(`profileImage_${sender}`) || "https://avatar.iran.liara.run/public"; // Fallback image agar kuch galat ho
+    return sessionStorage.getItem(`profileImage_${sender}`) || "https://avatar.iran.liara.run/public";
   };
 
   return (
@@ -82,34 +95,18 @@ const ChatRoom = ({ roomID, setRoomID }) => {
           <div className="hidden md:flex flex-col gap-6 items-center py-8">
             <button
               onClick={exitHandler}
-              className="w-12 h-12 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center hover:bg-white/20 transition-all cursor-pointer group"
-              aria-label="Log Out"
+              className="w-12 h-12 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center hover:bg-white/20 transition-all"
             >
               <LogOut className="h-6 w-6 text-white group-hover:scale-110 transition-transform" />
             </button>
           </div>
 
           <div className="flex-1 max-w-4xl mx-auto">
-            <div className="relative bg-white/10 backdrop-blur-xl rounded-3xl p-6 mb-6">
+            <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-6 mb-6">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                  <div className="bg-gradient-to-br from-cyan-400 to-blue-500 p-3 rounded-2xl">
-                    <Sparkles className="h-6 w-6 text-white" />
-                  </div>
-                  <div>
-                    <h1 className="text-2xl font-bold text-white">Creative Space</h1>
-                    <p className="text-white/70 text-md mt-1 flex items-center gap-2">
-                      <span className="w-2 h-2 bg-green-500 rounded-full animate-[ping_2.5s_linear_infinite]"></span>
-                      {roomUsers} users in room
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {userPreference.preferences.map((pref) => (
-                    <span key={pref} className="px-3 py-1 rounded-full bg-white/10 text-white/70 text-sm">
-                      {pref}
-                    </span>
-                  ))}
+                  <h1 className="text-2xl font-bold text-white">{pref} Warriors</h1>
+                  <p className="text-white/70 text-md">{roomUsers} users in room</p>
                 </div>
               </div>
             </div>
@@ -117,77 +114,59 @@ const ChatRoom = ({ roomID, setRoomID }) => {
             <div
               ref={chatContainerRef}
               className="h-[60vh] overflow-y-auto space-y-6 pr-4"
-              style={{ scrollbarWidth: "none", msOverflowStyle: "none" }} // Scrollbar hide
+              style={{ scrollbarWidth: "none" }}
             >
-              <style>
-                {`
-                  div::-webkit-scrollbar {
-                    display: none; /* Chrome, Safari, Opera ke liye scrollbar hide */
-                  }
-                `}
-              </style>
               {messages.map((msg, index) => (
                 <div
                   key={index}
-                  className={`flex ${msg.sender === userId ? "justify-end" : "justify-start"} items-center gap-2`}
+                  className={`flex ${msg.sender === userId ? "justify-end" : "justify-start"} items-start gap-2`}
                 >
                   {msg.sender !== userId && (
                     <img
-                      src={getProfileImage(msg.sender)} // Sender ki fixed image
+                      src={getProfileImage(msg.sender)}
                       alt="Profile"
-                      className="w-8 h-8 rounded-full"
+                      className="w-8 h-8 rounded-full mt-1"
                     />
                   )}
-                  <div
-                    className={`max-w-[80%] backdrop-blur-xl rounded-3xl px-6 py-4 ${
-                      msg.sender === userId
-                        ? "bg-gradient-to-br from-cyan-500/40 to-blue-500/40 text-white"
-                        : "bg-white/10 text-white"
-                    }`}
-                  >
-                    {msg.sender !== userId && (
-                      <p className="text-sm font-medium mb-1 text-white/80">{msg.sender}</p>
-                    )}
-                    <p className="text-sm leading-relaxed">{msg.message}</p>
-                    <p className="text-[10px] mt-2 opacity-50">
-                      {new Date(msg.timestamp).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </p>
-                  </div>
+                  <Message
+                    message={msg}
+                    userId={userId}
+                    roomID={roomID}
+                    isSender={msg.sender === userId}
+                    setMessages={setMessages}
+                  />
                   {msg.sender === userId && (
                     <img
-                      src={getProfileImage(msg.sender)} // Apni fixed image
+                      src={getProfileImage(msg.sender)}
                       alt="Profile"
-                      className="w-8 h-8 rounded-full"
+                      className="w-8 h-8 rounded-full mt-1"
                     />
                   )}
                 </div>
               ))}
             </div>
 
-            <div className="mt-6">
-              <form onSubmit={handleSendMessage} className="relative">
-                <div className="relative bg-white/10 backdrop-blur-xl rounded-2xl p-4">
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={message}
-                      onChange={(e) => setMessage(e.target.value)}
-                      placeholder="Type a message"
-                      className="flex-1 bg-transparent border-none outline-none text-white placeholder-white/70"
-                    />
-                    <button
-                      type="submit"
-                      className="p-2 bg-cyan-500 text-white rounded-full hover:bg-cyan-400"
-                    >
-                      <FaPaperPlane />
-                    </button>
-                  </div>
-                </div>
-              </form>
-            </div>
+            <form onSubmit={handleSendMessage} className="mt-6">
+              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 flex gap-2 items-center">
+                <textarea
+                  ref={textareaRef}
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Type a message"
+                  className="flex-1 bg-transparent border-none outline-none text-white placeholder-white/70 resize-none overflow-hidden"
+                  rows={1}
+                  style={{ minHeight: "1.5em", maxHeight: "6em" }}
+                  onInput={(e) => {
+                    e.target.style.height = "auto";
+                    e.target.style.height = `${e.target.scrollHeight}px`;
+                  }}
+                />
+                <button type="submit" className="p-2 bg-cyan-500 text-white rounded-full hover:bg-cyan-400">
+                  <FaPaperPlane />
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       </div>
