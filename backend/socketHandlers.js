@@ -122,6 +122,30 @@ function setupSocketHandlers(io, socket, redisClient) {
     }
     await redisClient.del(`user-room:${userId}`);
   });
+
+  // CHANGED: Fixed event name and added proper response for "Delete for Me"
+  socket.on("delete_for_me", async ({ messageId }) => {
+    // user ke liye track rakho
+    await redisClient.set(`delete_fro_me:${userId}:${messageId}`,"true")
+    socket.emit("message_deleted_for_me", { messageId }); // Notify only the requesting user
+  });
+
+  // CHANGED: Fixed event name, added proper Redis deletion, and broadcast for "Delete for Everyone"
+  socket.on("delete_for_everyone", async ({ messageId, roomId }) => {
+    const messageKey = `messages:${roomId}`;
+    const storedMessages = await redisClient.lRange(messageKey, 0, -1);
+    const updatedMessages = storedMessages.filter((msg) => JSON.parse(msg).id !== messageId);
+    await redisClient.del(messageKey); // Purana list delete karo
+    for (const msg of updatedMessages) {
+      await redisClient.rPush(messageKey, msg); // Baki messages wapas dalo
+    }
+    // "Delete for Me" records bhi saaf karo
+    const deletedKeys = await redisClient.keys(`deleted_for_me:*:${messageId}`);
+    for (const key of deletedKeys) {
+      await redisClient.del(key);
+    }
+    io.to(roomId).emit("message_deleted_for_everyone", { messageId }); // Sabko notify karo
+  });
 }
 
 module.exports = setupSocketHandlers;

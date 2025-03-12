@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useRef } from "react";
 import { FaPaperPlane } from "react-icons/fa";
 import { LogOut } from "lucide-react";
+import { BsEmojiSmile } from "react-icons/bs"; 
 import Message from "./components/Message";
 import toast from "react-hot-toast";
 import socket from "./socket";
+import EmojiPicker from "emoji-picker-react"; 
 
 const ChatRoom = ({ roomID, setRoomID }) => {
   const [message, setMessage] = useState("");
@@ -11,6 +13,7 @@ const ChatRoom = ({ roomID, setRoomID }) => {
   const [roomUsers, setRoomUsers] = useState(0);
   const userId = sessionStorage.getItem("userId");
   const [pref, setPref] = useState("");
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false); 
   const chatContainerRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -20,12 +23,18 @@ const ChatRoom = ({ roomID, setRoomID }) => {
     setPref(getPref);
 
     if (!sessionStorage.getItem(`profileImage_${userId}`)) {
-      const profileImage = `https://avatar.iran.liara.run/public?user=${userId}&timestamp=${Date.now()}`;
+      const profileImage = `https://avatar.iran.liara.run/public?user=${userId}×tamp=${Date.now()}`;
       sessionStorage.setItem(`profileImage_${userId}`, profileImage);
     }
 
     socket.on("receive_message", ({ sender, message, timestamp, id, reactions = {} }) => {
-      setMessages((prev) => [...prev, { sender, message, timestamp: new Date(timestamp), id, reactions }]);
+      const isDeletedForMe = sessionStorage.getItem(`deleted_for_me_${userId}_${id}`);
+      if (!isDeletedForMe) {
+        setMessages((prev) => {
+          if (prev.some((msg) => msg.id === id)) return prev;
+          return [...prev, { sender, message, timestamp: new Date(timestamp), id, reactions }];
+        });
+      }
     });
 
     socket.on("room_update", (event) => {
@@ -39,10 +48,25 @@ const ChatRoom = ({ roomID, setRoomID }) => {
       );
     });
 
+    socket.on("message_deleted_for_me", ({ messageId }) => {
+      setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+      sessionStorage.setItem(`deleted_for_me_${userId}_${messageId}`, "true");
+    });
+
+    socket.on("message_deleted_for_everyone", ({ messageId }) => {
+      setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+      sessionStorage.removeItem(`deleted_for_me_${userId}_${messageId}`);
+    });
+
+    socket.on("error", ({ message }) => toast.error(message));
+
     return () => {
       socket.off("receive_message");
       socket.off("room_update");
       socket.off("reaction_added");
+      socket.off("message_deleted_for_me");
+      socket.off("message_deleted_for_everyone");
+      socket.off("error");
     };
   }, [roomID, userId]);
 
@@ -57,6 +81,7 @@ const ChatRoom = ({ roomID, setRoomID }) => {
     if (roomID && message.trim()) {
       socket.emit("send_message", { roomID, message });
       setMessage("");
+      setShowEmojiPicker(false); // Close emoji picker on send
     }
   };
 
@@ -73,11 +98,18 @@ const ChatRoom = ({ roomID, setRoomID }) => {
     sessionStorage.removeItem("userId");
     sessionStorage.removeItem(`profileImage_${userId}`);
     sessionStorage.removeItem("preference");
+    Object.keys(sessionStorage).forEach((key) => {
+      if (key.startsWith(`deleted_for_me_${userId}_`)) sessionStorage.removeItem(key);
+    });
     setPref("");
   };
 
-  const getProfileImage = (sender) => {
-    return sessionStorage.getItem(`profileImage_${sender}`) || "https://avatar.iran.liara.run/public";
+  const getProfileImage = (sender) =>
+    sessionStorage.getItem(`profileImage_${sender}`) || "https://avatar.iran.liara.run/public";
+
+  const handleEmojiClick = (emojiObject) => {
+    setMessage((prev) => prev + emojiObject.emoji);
+    textareaRef.current.focus(); // Keep focus on textarea
   };
 
   return (
@@ -91,26 +123,29 @@ const ChatRoom = ({ roomID, setRoomID }) => {
       }}
     >
       <div className="min-h-screen backdrop-blur-xl bg-black/30">
-        <div className="container mx-auto px-4 py-8 flex gap-6">
-          <div className="hidden md:flex flex-col gap-6 items-center py-8">
-            <button
-              onClick={exitHandler}
-              className="w-12 h-12 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center hover:bg-white/20 transition-all"
-            >
-              <LogOut className="h-6 w-6 text-white group-hover:scale-110 transition-transform" />
-            </button>
-          </div>
-
-          <div className="flex-1 max-w-4xl mx-auto">
-            <div className="bg-white/10 backdrop-blur-xl rounded-3xl p-6 mb-6">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6 lg:py-8 flex flex-col min-h-screen">
+          <div className="flex-1 flex flex-col w-full max-w-full sm:max-w-2xl md:max-w-3xl lg:max-w-4xl mx-auto">
+            {/* Header */}
+            <div className="bg-white/10 backdrop-blur-xl rounded-2xl sm:rounded-3xl p-3 sm:p-4 md:p-6 mb-4 sm:mb-6">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <h1 className="text-2xl font-bold text-white">{pref} Warriors</h1>
-                  <p className="text-white/70 text-md">{roomUsers} users in room</p>
+                <div className="flex items-center gap-2 sm:gap-4">
+                  <h1 className="text-base sm:text-lg md:text-xl lg:text-2xl font-bold text-white">
+                    {pref} Warriors
+                  </h1>
+                  <p className="text-white/70 text-xs sm:text-sm md:text-base">
+                    {roomUsers} users in room
+                  </p>
                 </div>
+                <button
+                  onClick={exitHandler}
+                  className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center bg-white/10 backdrop-blur-xl rounded-xl sm:rounded-2xl hover:bg-white/20 transition-all"
+                >
+                  <LogOut className="h-4 w-4 sm:h-5 sm:w-5 text-white group-hover:scale-110 transition-transform" />
+                </button>
               </div>
             </div>
 
+            {/* Messages Area */}
             <div
               ref={chatContainerRef}
               className="h-[60vh] overflow-y-auto space-y-6 pr-4"
@@ -145,16 +180,23 @@ const ChatRoom = ({ roomID, setRoomID }) => {
                 </div>
               ))}
             </div>
-
-            <form onSubmit={handleSendMessage} className="mt-6">
-              <div className="bg-white/10 backdrop-blur-xl rounded-2xl p-4 flex gap-2 items-center">
+            {/* Input Form with Emoji Picker */}
+            <form onSubmit={handleSendMessage} className="mt-4 sm:mt-6 relative">
+              <div className="bg-white/10 backdrop-blur-xl rounded-xl sm:rounded-2xl p-2 sm:p-3 md:p-4 flex gap-2 items-center">
+                <button
+                  type="button"
+                  onClick={() => setShowEmojiPicker((prev) => !prev)}
+                  className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center text-white hover:text-cyan-400"
+                >
+                  <BsEmojiSmile className="w-5 h-5 sm:w-6 sm:h-6" />
+                </button>
                 <textarea
                   ref={textareaRef}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Type a message"
-                  className="flex-1 bg-transparent border-none outline-none text-white placeholder-white/70 resize-none overflow-hidden"
+                  className="flex-1 bg-transparent border-none outline-none text-white placeholder-white/70 resize-none overflow-hidden text-sm sm:text-base"
                   rows={1}
                   style={{ minHeight: "1.5em", maxHeight: "6em" }}
                   onInput={(e) => {
@@ -162,10 +204,18 @@ const ChatRoom = ({ roomID, setRoomID }) => {
                     e.target.style.height = `${e.target.scrollHeight}px`;
                   }}
                 />
-                <button type="submit" className="p-2 bg-cyan-500 text-white rounded-full hover:bg-cyan-400">
-                  <FaPaperPlane />
+                <button
+                  type="submit"
+                  className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center bg-cyan-500 text-white rounded-full hover:bg-cyan-400 transition-all"
+                >
+                  <FaPaperPlane className="w-4 h-4 sm:w-5 sm:h-5" />
                 </button>
               </div>
+              {showEmojiPicker && (
+                <div className="absolute bottom-16 left-0 z-10">
+                  <EmojiPicker onEmojiClick={handleEmojiClick} />
+                </div>
+              )}
             </form>
           </div>
         </div>

@@ -1,7 +1,8 @@
+require("dotenv").config();
 const { updateRoomStatus } = require("./roomManager");
 const { v4: uuidv4 } = require("uuid");
 
-const MAX_USERS_PER_ROOM = process.env.MAX_CLIENT;
+const MAX_USERS_PER_ROOM = process.env.MAX_CLIENT || 5;
 
 async function createSubscriberForPreference(preference, io, redisClient) {
   const sub = redisClient.duplicate();

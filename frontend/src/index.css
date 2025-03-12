@@ -7,3 +7,6 @@
     height: 400px !important;
     overflow-y: auto;
   }
+  .chat-container::-webkit-scrollbar {
+    display: none;
+  }

@@ -1,7 +1,8 @@
+require("dotenv").config();
 const Redis = require("redis");
 
 const redisClient = Redis.createClient({
-  url: process.env.REDIS_URL,
+  url: 'rediss://default:Ae8MAAIjcDE1NjBiODFkOWEyMmY0OWM2OWY3MThlZTY3OTFiODg1OXAxMA@legible-squid-61196.upstash.io:6379'
 });
 
 (async () => {

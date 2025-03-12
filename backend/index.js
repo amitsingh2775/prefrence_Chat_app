@@ -9,6 +9,7 @@ require('dotenv').config();
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
+const port=8000
 
 app.use(express.json());
 app.get("/", (req, res) => res.send("Redis-based chat server is running!"));
@@ -48,4 +49,4 @@ io.on("connection", (socket) => {
   createSubscriberForPreference(preference, io, redisClient);
 });
 
-server.listen(3000, () => console.log("Server running on http://localhost:3000"));
+server.listen(port, () => console.log(`Server running on http://localhost:${port}`));

@@ -1,7 +1,31 @@
 import React, { useState, useEffect } from "react";
-import Preference from "./Preference";
 import { Toaster, toast } from "react-hot-toast";
+import { BrowserRouter as Router, Routes, Route, useNavigate } from "react-router-dom";
+import Preference from "./Preference";
 import ChatRoom from "./ChatRoom";
+import LandingPage from "./pages/Landing";
+
+// Wrapper component for LandingPage to handle navigation
+const LandingPageWrapper = () => {
+  const navigate = useNavigate();
+
+  const handleGetStarted = () => {
+    navigate("/preference"); // Navigate to Preference page
+  };
+
+  return <LandingPage onGetStarted={handleGetStarted} />;
+};
+
+// Wrapper component for Preference to handle navigation
+const PreferenceWrapper = ({ setRoomID, preference, setPreference }) => {
+  const navigate = useNavigate();
+
+  const handleBack = () => {
+    navigate("/"); // Navigate back to Landing page
+  };
+
+  return <Preference setRoomID={setRoomID} preference={preference} setPreference={setPreference} onBack={handleBack} />;
+};
 
 const App = () => {
   const [roomID, setRoomID] = useState(null);
@@ -12,7 +36,6 @@ const App = () => {
     const storedRoomID = sessionStorage.getItem("roomID");
     if (storedRoomID) {
       setRoomID(storedRoomID);
-     // toast.success("Restored previous session");
     }
   }, []);
 
@@ -22,20 +45,27 @@ const App = () => {
       sessionStorage.setItem("roomID", roomID);
       toast.success(`Joined Room: ${roomID}`);
     } else {
-      sessionStorage.removeItem("roomID"); // Clean up when leaving room
-      //toast.error("Left the room");
+      sessionStorage.removeItem("roomID");
     }
   }, [roomID]);
 
   return (
-    <div>
-       <Toaster position="top-right" reverseOrder={false} />
-      {!roomID ? (
-        <Preference setRoomID={setRoomID} preference={preference} setPreference={setPreference} />
-      ) : (
-        <ChatRoom roomID={roomID} setRoomID={setRoomID} />
-      )}
-    </div>
+    <Router>
+      <div>
+        <Toaster position="top-right" reverseOrder={false} />
+        {roomID ? (
+          <ChatRoom roomID={roomID} setRoomID={setRoomID} />
+        ) : (
+          <Routes>
+            <Route path="/" element={<LandingPageWrapper />} />
+            <Route 
+              path="/preference" 
+              element={<PreferenceWrapper setRoomID={setRoomID} preference={preference} setPreference={setPreference} />} 
+            />
+          </Routes>
+        )}
+      </div>
+    </Router>
   );
 };
 
